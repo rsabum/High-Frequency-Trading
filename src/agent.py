@@ -146,56 +146,41 @@ class MarketMaker(object):
         V[-1, :] = -alpha * q_grid ** 2
 
         print("Solving HJB-QVI...")
+        max_error = 1e-9
         for i in tqdm(range(N, 0, -1)):  # Iterate backward over time steps
+            error = 1e9
 
             # solve the quasi-variational inequality using value iteration 
-            while True:
+            while error > max_error:
                 V_prime = np.zeros(len(q_grid))
 
                 for j, q_j in enumerate(q_grid):
-                    if q_j == q_min:
-                        B = max(0, 1/kappa_bid - rebate - (V[i, j + 1] - V[i, j]))
-                        
-                        v_mb = V[i - 1, j + 1] - cost
-                        V_mm = V[i, j] + dt * (
-                            (lambda_bid * np.exp(-kappa_bid * B) * 
-                            (B + rebate + V[i, j + 1] - V[i, j])) - 
-                            phi * q_j ** 2
-                        )
+                    B = max(0, 1/kappa_bid - rebate - (V[i, j + 1] - V[i, j])) if q_j < q_max else None
+                    A = max(0, 1/kappa_ask - rebate - (V[i, j - 1] - V[i, j])) if q_j > q_min else None
+                    V_mb = V[i - 1, j + 1] - cost if q_j < q_max else -np.inf
+                    V_ms = V[i - 1, j - 1] - cost if q_j > q_min else -np.inf
+                    V_mm = V[i, j] + dt * (
+                        (lambda_bid * np.exp(-kappa_bid * B) * 
+                        (B + rebate + V[i, j + 1] - V[i, j]) if B else 0) + 
+                        (lambda_ask * np.exp(-kappa_ask * A) * 
+                        (A + rebate + V[i, j - 1] - V[i, j]) if A else 0) - 
+                        phi * q_j ** 2
+                    )
 
-                        V_prime[j] = max(v_mb, V_mm)
-
-                    elif q_j == q_max:
-                        A = max(0, 1/kappa_ask - rebate - (V[i, j - 1] - V[i, j]))
-                        
-                        v_ms = V[i - 1, j - 1] - cost
-                        V_mm = V[i, j] + dt * (
-                            (lambda_ask * np.exp(-kappa_ask * A) * 
-                            (A + rebate + V[i, j - 1] - V[i, j])) - 
-                            phi * q_j ** 2
-                        )
-
-                        V_prime[j] = max(v_ms, V_mm)
-
+                    k = np.argmax([V_mb, V_ms, V_mm])
+                    
+                    if k == 0:
+                        V_prime[j] = V_mb
+                        PI[(i - 1, j)] = ("market_buy", None, None)
+                    elif k == 1:
+                        V_prime[j] = V_ms
+                        PI[(i - 1, j)] = ("market_sell", None, None)
                     else:
-                        B = max(0, 1/kappa_bid - rebate - V[i, j + 1] + V[i, j])
-                        A = max(0, 1/kappa_ask - rebate - V[i, j - 1] + V[i, j])
+                        V_prime[j] = V_mm
+                        PI[(i - 1, j)] = ("market_make", B, A)
 
-                        v_mb = V[i - 1, j + 1] - cost
-                        v_ms = V[i - 1, j - 1] - cost
-                        V_mm = V[i, j] + dt * (
-                            (lambda_bid * np.exp(-kappa_bid * B) * 
-                            (B + rebate + V[i, j + 1] - V[i, j]) + 
-                            lambda_ask * np.exp(-kappa_ask * A) * 
-                            (A + rebate + V[i, j - 1] - V[i, j])) - 
-                            phi * q_j ** 2
-                        )
 
-                        V_prime[j] = max(v_mb, v_ms, V_mm)
-
-                if np.linalg.norm(V_prime - V[i - 1]) < 1e-9:
-                    break
-
+                error = np.linalg.norm(V_prime - V[i - 1])
                 V[i - 1] = V_prime
                     
 
