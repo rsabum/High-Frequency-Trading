@@ -85,7 +85,8 @@ class MarketMaker(object):
         lambda_ask, 
         kappa_bid, 
         kappa_ask, 
-        rebate, 
+        rebate,
+        cost,
         phi, 
         alpha, 
         T, 
@@ -144,58 +145,59 @@ class MarketMaker(object):
         # Set the terminal condition: V(T, q) = -alpha * q^2
         V[-1, :] = -alpha * q_grid ** 2
 
-        # solving hjb part
-        print("Solving Hamilton Jacobi Bellman equation...")
+        print("Solving HJB-QVI...")
         for i in tqdm(range(N, 0, -1)):  # Iterate backward over time steps
-            t_i = t_grid[i]
 
-            # solve hjb equation using backward finite difference scheme
-            for j, q_j in enumerate(q_grid):
+            # solve the quasi-variational inequality using value iteration 
+            while True:
+                V_prime = np.zeros(len(q_grid))
 
-                # We can quote a bid if and only if we are strictly
-                # below the maximum inventory level
-                if q_j == q_min:
-                    B = max(0, 1/kappa_bid - rebate - (V[i, j + 1] - V[i, j]))
+                for j, q_j in enumerate(q_grid):
+                    if q_j == q_min:
+                        B = max(0, 1/kappa_bid - rebate - (V[i, j + 1] - V[i, j]))
+                        
+                        v_mb = V[i - 1, j + 1] - cost
+                        V_mm = V[i, j] + dt * (
+                            (lambda_bid * np.exp(-kappa_bid * B) * 
+                            (B + rebate + V[i, j + 1] - V[i, j])) - 
+                            phi * q_j ** 2
+                        )
+
+                        V_prime[j] = max(v_mb, V_mm)
+
+                    elif q_j == q_max:
+                        A = max(0, 1/kappa_ask - rebate - (V[i, j - 1] - V[i, j]))
+                        
+                        v_ms = V[i - 1, j - 1] - cost
+                        V_mm = V[i, j] + dt * (
+                            (lambda_ask * np.exp(-kappa_ask * A) * 
+                            (A + rebate + V[i, j - 1] - V[i, j])) - 
+                            phi * q_j ** 2
+                        )
+
+                        V_prime[j] = max(v_ms, V_mm)
+
+                    else:
+                        B = max(0, 1/kappa_bid - rebate - V[i, j + 1] + V[i, j])
+                        A = max(0, 1/kappa_ask - rebate - V[i, j - 1] + V[i, j])
+
+                        v_mb = V[i - 1, j + 1] - cost
+                        v_ms = V[i - 1, j - 1] - cost
+                        V_mm = V[i, j] + dt * (
+                            (lambda_bid * np.exp(-kappa_bid * B) * 
+                            (B + rebate + V[i, j + 1] - V[i, j]) + 
+                            lambda_ask * np.exp(-kappa_ask * A) * 
+                            (A + rebate + V[i, j - 1] - V[i, j])) - 
+                            phi * q_j ** 2
+                        )
+
+                        V_prime[j] = max(v_mb, v_ms, V_mm)
+
+                if np.linalg.norm(V_prime - V[i - 1]) < 1e-9:
+                    break
+
+                V[i - 1] = V_prime
                     
-                    V[i - 1, j] = V[i, j] + dt * (
-                        (lambda_bid * np.exp(-kappa_bid * B) * 
-                        (B + rebate + V[i, j + 1] - V[i, j])) - 
-                        phi * q_j ** 2
-                    )
-
-                    PI[(i - 1, j)] = (B, None)
-
-                    
-                # We can quote an ask if and only if we are strictly
-                # above the minimum inventory level
-                elif q_j == q_max:
-                    A = max(0, 1/kappa_ask - rebate - (V[i, j - 1] - V[i, j]))
-                    
-                    V[i - 1, j] = V[i, j] + dt * (
-                        (lambda_ask * np.exp(-kappa_ask * A) * 
-                        (A + rebate + V[i, j - 1] - V[i, j])) - 
-                        phi * q_j ** 2
-                    )
-
-                    PI[(i - 1, j)] = (None, A)
-
-                # We can quote both a bid and an ask
-                else:
-                    B = max(0, 1/kappa_bid - rebate - (V[i, j + 1] - V[i, j]))
-                    A = max(0, 1/kappa_ask - rebate - (V[i, j - 1] - V[i, j]))
-                    
-                    V[i - 1, j] = V[i, j] + dt * (
-                        (lambda_bid * np.exp(-kappa_bid * B) * 
-                        (B + rebate + V[i, j + 1] - V[i, j]) + 
-                        lambda_ask * np.exp(-kappa_ask * A) * 
-                        (A + rebate + V[i, j - 1] - V[i, j])) - 
-                        phi * q_j ** 2
-                    )
-
-                    PI[(i - 1, j)] = (B, A)
-
-                # print(f"t={t_i}, q={q_j}, bid={PI[(i - 1, j)][0]}, ask={PI[(i - 1, j)][1]}, V={V[i - 1, j]}")
-                            
 
         self.V = ValueFunction(t_grid, q_grid, V, PI)
                     
