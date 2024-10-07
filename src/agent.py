@@ -3,7 +3,7 @@ from tqdm import tqdm
 from .simulation import MarketState
 
 class ValueFunction(object):
-    def __init__(self, t_grid, q_grid, V, PI):
+    def __init__(self, t_grid, q_grid, V, U):
         """
         Initializes the SolverOutput class with the specified parameters.
 
@@ -25,7 +25,7 @@ class ValueFunction(object):
         self.q_lookup = {q: i for i, q in enumerate(q_grid)}
 
         self.V = V
-        self.PI = PI
+        self.U = U
     
     def get_value(self, t, q):
         """
@@ -71,7 +71,7 @@ class ValueFunction(object):
         t_idx = self.t_lookup[t]
         q_idx = self.q_lookup[q]
 
-        return self.PI[(t_idx, q_idx)]
+        return self.U[(t_idx, q_idx)]
 
 
 class MarketMaker(object):
@@ -163,7 +163,7 @@ class MarketMaker(object):
 
         # Initialize the value function and policy
         V = np.zeros((len(t_grid), len(q_grid)))
-        PI = {}
+        U = {}
 
         # Set the terminal condition: V(T, q) = -alpha * q^2
         V[-1, :] = -self.alpha * q_grid ** 2
@@ -210,20 +210,20 @@ class MarketMaker(object):
                     # Update the value function and policy
                     if k == 0:
                         V_prime[j] = V_mb
-                        PI[(i - 1, j)] = ("market_buy", None, None)
+                        U[(i - 1, j)] = ("market_buy", None, None)
                     elif k == 1:
                         V_prime[j] = V_ms
-                        PI[(i - 1, j)] = ("market_sell", None, None)
+                        U[(i - 1, j)] = ("market_sell", None, None)
                     else:
                         V_prime[j] = V_mm
-                        PI[(i - 1, j)] = ("market_make", B, A)
+                        U[(i - 1, j)] = ("market_make", B, A)
 
                 # Compute the error and update the value function
                 error = np.linalg.norm(V_prime - V[i - 1])
                 V[i - 1] = V_prime
                     
         # Store the value function and policy
-        self.V = ValueFunction(t_grid, q_grid, V, PI)
+        self.V = ValueFunction(t_grid, q_grid, V, U)
                     
     
     def run(self, state: MarketState) -> tuple:
