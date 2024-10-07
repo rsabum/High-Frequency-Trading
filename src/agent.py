@@ -13,9 +13,12 @@ class ValueFunction(object):
             A list representing the q grid.
         t_grid : list
             A list representing the t grid.
-        h : np.ndarray
+        V : np.ndarray
             A numpy array representing the optimal 
             value function at each q and t value.
+        U : dict
+            A dictionary representing the optimal policy 
+            at each q and t value.
         """
 
         self.q_grid = q_grid
@@ -34,14 +37,14 @@ class ValueFunction(object):
         Parameters:
         -----------
         t : float
-            The time at which to evaluate the policy.
+            The time at which to evaluate.
         q : float
-            The inventory level at which to evaluate the policy.
+            The inventory level at which to evaluate.
 
         Returns:
         --------
-        tuple
-            The policy at the specified time and inventory level.
+        float
+            The optimal value at the specified time and inventory level.
         """
 
         # Find the closest time step to the specified time
@@ -143,7 +146,7 @@ class MarketMaker(object):
     def solve_hjb_qvi(self):
         """
         Solves the optimal value function and policy 
-        function using the HJB-QVI.
+        function by solving the HJB-QVI.
 
         Parameters:
         -----------
