@@ -17,8 +17,6 @@ class MarketState(object):
 
 class MarketSimulation():
     """
-    SimpleEnv is an object that is able to simulate the simple probabilistic environment.
-
     Attributes
     ----------
     T : integer
