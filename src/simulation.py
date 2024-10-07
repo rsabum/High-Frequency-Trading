@@ -23,35 +23,40 @@ class MarketSimulation():
     ----------
     T : integer
         the number of periods to run the simulation
-    M : int
+    N : int
         the number of timesteps per simulation
-    dt : integer
-        the size of the time steps
-
+    q_min : int
+        the minimum inventory level
+    q_max : int
+        the maximum inventory level
+    X_0 : float
+        the initial cash position of the agent
+    S_0 : float
+        Initial asset price.
+    mu : float
+        The drift of the asset.
     sigma : float
         The volatility of the asset.
-    S0 : float
-        Initial asset price.
     ds : float
         Asset price tick size.
-
     lambda_bid : float
-        the intensity of the Poisson process dictating the arrivals of buy market orders
+        the intensity of the Poisson process dictating the arrivals 
+        of market orders on the bid side
     lambda_ask : float
-        the intensity of the Poisson process dictating the arrivals of sell market orders
+        the intensity of the Poisson process dictating the arrivals 
+        of market orders on the ask side
     kappa_bid : float
-        decay parameter for the execution probability of bid quotes
+        order flow decay parameter for the bid side
     kappa_ask : float
-        decay parameter for the execution probability of ask quotes
-    
+        order flow decay parameter for the ask side
     alpha : float
         the terminal inventory penalty parameter
     phi : float
         the running inventory penalty parameter
-
     rebate_rate : float
         rebate rate awarded for providing liquidity
-
+    cost : float
+        cost of sending a market order
     debug : bool
         whether or not information for debugging should be printed during simulation
     """
@@ -62,22 +67,17 @@ class MarketSimulation():
         N: int, 
         q_min: int, 
         q_max: int,
-
         X_0: float,
-        
         S_0: float,
         mu: float,
         sigma: float,
         ds: float,
-
         lambda_bid: float, 
         lambda_ask: float, 
         kappa_bid: float, 
         kappa_ask: float, 
-
         rebate: float,
         cost: float,
-
         debug: bool=False,
     ):
 
@@ -175,6 +175,24 @@ class MarketSimulation():
         )
 
     def market_make(self, bid: float, ask: float) -> tuple[float, float]:
+        """
+        Simulates the market maker quoting a bid and ask depth
+        
+        Parameters
+        ----------
+        bid : float
+            The bid depth
+        ask : float
+            The ask depth
+            
+        Returns
+        -------
+        dX : float
+            The change in the cash process
+        dQ : float
+            The change in the inventory process
+        """
+
         if self.debug:
             print("Market Making...")
             print("\tBid:", round(self.S_t - bid, 2))
@@ -211,6 +229,25 @@ class MarketSimulation():
 
 
     def market_take(self, buy: bool, n: int) -> tuple[float, float]:
+        """
+        Simulates the market maker sending a market order
+        to buy or sell n shares
+
+        Parameters
+        ----------
+        buy : bool
+            Whether the market order is a buy or sell order
+        n : int
+            The number of shares to buy or sell
+
+        Returns
+        -------
+        dX : float
+            The change in the cash process 
+        dQ : float
+            The change in the inventory process
+        """
+
         if self.debug:
             print("Market Taking...")
             if buy:
@@ -234,25 +271,20 @@ class MarketSimulation():
 
         Parameters
         ----------
-        action : np array
-            The bid and ask depth quotes
+        action : tuple
+            The action tuple containing the market maker's choice
+            of action and the bid and ask depths/market order size
 
         Returns
         -------
         observation : ndarray
             The observation of the next state
 
-        reward : float
-            The immediate reward of the resulting observation
+        wealth : float
+            The current wealth of the agent
 
         terminal : bool
             Whether the episode has terminated
-
-        truncated : bool
-            Whether the episode has been truncated
-
-        info : dict
-            Additional information about the environment 
         """
 
         choice, bid, ask = action
