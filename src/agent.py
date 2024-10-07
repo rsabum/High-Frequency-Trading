@@ -2,9 +2,6 @@ import numpy as np
 from tqdm import tqdm
 from .simulation import MarketState
 
-class KalmanFilter(object):
-    pass
-
 class ValueFunction(object):
     def __init__(self, t_grid, q_grid, V, PI):
         """
@@ -174,18 +171,14 @@ class MarketMaker(object):
         # Solve the control problem by using 
         # a backwards euler finite difference scheme to
         # solve the HJB equation and value iteration to solve the QVI
-        print("Solving HJB-QVI...")
-
-        # Set the maximum error tolerance for value iteration
-        max_error = 1e-9
 
         # Iterate backwards in time
-        for i in tqdm(range(self.N, 0, -1)):
+        for i in tqdm(range(self.N, 0, -1), desc="Solving HJB-QVI"):
             # initialize error to some large value
             error = 1e9
 
             # solve for the value function at time t_{i - 1}
-            while error > max_error:
+            while error > 1e-6:
                 # initialize the value function at time t_{i - 1}
                 V_prime = np.zeros(len(q_grid))
 
@@ -231,8 +224,6 @@ class MarketMaker(object):
                     
         # Store the value function and policy
         self.V = ValueFunction(t_grid, q_grid, V, PI)
-
-        print("HJB-QVI Solved!")
                     
     
     def run(self, state: MarketState) -> tuple:

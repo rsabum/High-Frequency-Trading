@@ -63,9 +63,11 @@ class MarketSimulation():
         q_min: int, 
         q_max: int,
 
+        X_0: float,
+        
+        S_0: float,
         mu: float,
         sigma: float,
-        S_0: float,
         ds: float,
 
         lambda_bid: float, 
@@ -87,9 +89,10 @@ class MarketSimulation():
         self.q_min = q_min
         self.q_max = q_max
 
+        self.X_0 = X_0
+        self.S_0 = S_0
         self.mu = mu
         self.sigma = sigma
-        self.S_0 = S_0
         self.ds = ds
 
         self.lambda_bid = lambda_bid
@@ -207,20 +210,20 @@ class MarketSimulation():
         return dX, dQ
 
 
-    def market_take(self, buy: bool) -> tuple[float, float]:
+    def market_take(self, buy: bool, n: int) -> tuple[float, float]:
         if self.debug:
             print("Market Taking...")
             if buy:
-                print(f"\tBuying {1} share at {self.S_t}")
+                print(f"\tBuying {n} shares at {self.S_t}")
             else:
-                print(f"\tSelling {1} share at {self.S_t}")
+                print(f"\tSelling {n} shares at {self.S_t}")
                 
         # Change in inventory and cash processes
         dX, dQ = 0, 0
 
         # match executed buy orders with executed sell orders
-        dX = (-self.S_t if buy else self.S_t) - self.cost
-        dQ = 1 if buy else -1
+        dX = n * (-self.S_t if buy else self.S_t) - n * self.cost
+        dQ = n if buy else -n
 
         return dX, dQ
 
@@ -268,10 +271,10 @@ class MarketSimulation():
             dX, dQ = self.market_make(bid, ask)
         
         elif choice == "market_buy":
-            dX, dQ = self.market_take(True)
+            dX, dQ = self.market_take(True, 1)
         
         elif choice == "market_sell":
-            dX, dQ = self.market_take(False)
+            dX, dQ = self.market_take(False, 1)
 
         if self.debug:
             print(f"Profit Earned: {round(dX, 2)}")
@@ -304,7 +307,7 @@ class MarketSimulation():
 
         self.t_i = 0
         self.Q_t = 0
-        self.X_t = 0
+        self.X_t = self.X_0
         self.S_t = self.S_0
 
         return self.state()
