@@ -74,7 +74,6 @@ class MarketSimulation():
         kappa_ask: float, 
 
         rebate: float,
-        cost: float,
 
         debug: bool=False,
     ):
@@ -98,8 +97,6 @@ class MarketSimulation():
         self.kappa_ask = kappa_ask
 
         self.rebate = rebate
-        self.cost = cost
-
         self.debug = debug
 
         # Reset the environment
@@ -171,9 +168,43 @@ class MarketSimulation():
             mid_price=self.S_t
         )
 
-    def market_make(self, bid: float, ask: float) -> tuple[float, float]:
+    def step(self, bid: float, ask: float) -> tuple[MarketState, float, bool]:
+        """
+        Takes a step in the environment based on the market maker quoting a bid and ask depth
+
+        Parameters
+        ----------
+        action : np array
+            The bid and ask depth quotes
+
+        Returns
+        -------
+        observation : ndarray
+            The observation of the next state
+
+        reward : float
+            The immediate reward of the resulting observation
+
+        terminal : bool
+            Whether the episode has terminated
+
+        truncated : bool
+            Whether the episode has been truncated
+
+        info : dict
+            Additional information about the environment 
+        """
+        
         if self.debug:
+            print("-" * 30)
+            print("t =", self.t_grid[self.t_i])
+            print("Q_t =", round(self.Q_t, 2))
+            print("X_t =", round(self.X_t, 2))
+            print("S_t =", round(self.S_t, 2))
+
             print("Market Making...")
+            print("\tBid Depth:", bid)
+            print("\tAsk Depth:", ask)
             print("\tBid:", round(self.S_t - bid, 2))
             print("\tAsk:", round(self.S_t + ask, 2))
             print("\tSpread:", bid + ask)
@@ -204,88 +235,22 @@ class MarketSimulation():
             dX += (self.S_t + ask) * abs(max(dQ, self.q_min - self.Q_t))
             dQ = max(dQ, self.q_min - self.Q_t)
 
-        return dX, dQ
-
-
-    def market_take(self, buy: bool) -> tuple[float, float]:
-        if self.debug:
-            print("Market Taking...")
-            if buy:
-                print(f"\tBuying {1} share at {self.S_t}")
-            else:
-                print(f"\tSelling {1} share at {self.S_t}")
-                
-        # Change in inventory and cash processes
-        dX, dQ = 0, 0
-
-        # match executed buy orders with executed sell orders
-        dX = (-self.S_t if buy else self.S_t) - self.cost
-        dQ = 1 if buy else -1
-
-        return dX, dQ
-
-
-    def step(self, action: tuple) -> tuple[MarketState, float, bool]:
-        """
-        Takes a step in the environment based on the market maker quoting a bid and ask depth
-
-        Parameters
-        ----------
-        action : np array
-            The bid and ask depth quotes
-
-        Returns
-        -------
-        observation : ndarray
-            The observation of the next state
-
-        reward : float
-            The immediate reward of the resulting observation
-
-        terminal : bool
-            Whether the episode has terminated
-
-        truncated : bool
-            Whether the episode has been truncated
-
-        info : dict
-            Additional information about the environment 
-        """
-
-        choice, bid, ask = action
-        
-        if self.debug:
-            print("-" * 30)
-            print("t =", self.t_grid[self.t_i])
-            print("Q_t =", round(self.Q_t, 2))
-            print("X_t =", round(self.X_t, 2))
-            print("S_t =", round(self.S_t, 2))
-
-        if choice == "market_make":
-            # Increment time only when we market make
-            self.t_i += 1
-            self.update_price()
-            dX, dQ = self.market_make(bid, ask)
-        
-        elif choice == "market_buy":
-            dX, dQ = self.market_take(True)
-        
-        elif choice == "market_sell":
-            dX, dQ = self.market_take(False)
-
         if self.debug:
             print(f"Profit Earned: {round(dX, 2)}")
             print(f"Net Inventory Change: {dQ}")
 
         self.X_t += dX
         self.Q_t += dQ
+        self.t_i += 1
+        self.update_price()
 
         wealth = self.X_t + self.S_t * self.Q_t
+        done = self.t_i == self.N
 
         if self.debug:
             print("-" * 30)
 
-        return self.state(), wealth, self.t_i == self.N, self.t_i
+        return self.state(), wealth, done, self.t_i
         
 
     def reset(self) -> MarketState:

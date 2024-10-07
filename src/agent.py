@@ -6,7 +6,7 @@ class KalmanFilter(object):
     pass
 
 class ValueFunction(object):
-    def __init__(self, t_grid, q_grid, V, PI):
+    def __init__(self, t_grid, q_grid, V, U):
         """
         Initializes the SolverOutput class with the specified parameters.
 
@@ -28,7 +28,7 @@ class ValueFunction(object):
         self.q_lookup = {q: i for i, q in enumerate(q_grid)}
 
         self.V = V
-        self.PI = PI
+        self.U = U
     
     def get_value(self, t, q):
         """
@@ -74,7 +74,7 @@ class ValueFunction(object):
         t_idx = self.t_lookup[t]
         q_idx = self.q_lookup[q]
 
-        return self.PI[(t_idx, q_idx)]
+        return self.U[(t_idx, q_idx)]
 
 
 class MarketMaker(object):
@@ -89,7 +89,6 @@ class MarketMaker(object):
         kappa_bid, 
         kappa_ask, 
         rebate,
-        cost,
         phi, 
         alpha
     ):
@@ -114,8 +113,6 @@ class MarketMaker(object):
             The bid side order flow decay.
         kappa_ask : float
             The ask side order flow decay.
-        cost : float
-            The cost of sending a market order.
         rebate : float
             The rebate for providing liquidity.
         phi : float
@@ -137,7 +134,6 @@ class MarketMaker(object):
         self.kappa_bid = kappa_bid
         self.kappa_ask = kappa_ask
         self.rebate = rebate
-        self.cost = cost
         self.phi = phi
         self.alpha = alpha
 
@@ -166,7 +162,7 @@ class MarketMaker(object):
 
         # Initialize the value function and policy
         V = np.zeros((len(t_grid), len(q_grid)))
-        PI = {}
+        U = {}
 
         # Set the terminal condition: V(T, q) = -alpha * q^2
         V[-1, :] = -self.alpha * q_grid ** 2
@@ -176,61 +172,36 @@ class MarketMaker(object):
         # solve the HJB equation and value iteration to solve the QVI
         print("Solving HJB-QVI...")
 
-        # Set the maximum error tolerance for value iteration
-        max_error = 1e-9
 
         # Iterate backwards in time
         for i in tqdm(range(self.N, 0, -1)):
-            # initialize error to some large value
-            error = 1e9
 
             # solve for the value function at time t_{i - 1}
-            while error > max_error:
-                # initialize the value function at time t_{i - 1}
-                V_prime = np.zeros(len(q_grid))
+            # initialize the value function at time t_{i - 1}
+            for j, q_j in enumerate(q_grid):
+                # Compute the analytically optimal bid and ask depths
+                B = max(
+                    0, 1/self.kappa_bid - self.rebate - 
+                    (V[i, j + 1] - V[i, j])) if q_j < self.q_max else None
+                
+                A = max(
+                    0, 1/self.kappa_ask - self.rebate - 
+                    (V[i, j - 1] - V[i, j])) if q_j > self.q_min else None
+                
+                # Compute the value for each possible action
+                # (market buy, market sell, market make)
+                U[(i - 1, j)] = (B, A)
+                V[i - 1, j] = V[i, j] + dt * (
+                    (self.lambda_bid * np.exp(-self.kappa_bid * B) * 
+                    (B + self.rebate + V[i, j + 1] - V[i, j]) if B else 0) + 
+                    (self.lambda_ask * np.exp(-self.kappa_ask * A) * 
+                    (A + self.rebate + V[i, j - 1] - V[i, j]) if A else 0) - 
+                    self.phi * q_j ** 2
+                )
 
-                for j, q_j in enumerate(q_grid):
-                    # Compute the analytically optimal bid and ask depths
-                    B = max(
-                        0, 1/self.kappa_bid - self.rebate - 
-                        (V[i, j + 1] - V[i, j])) if q_j < self.q_max else None
-                    
-                    A = max(
-                        0, 1/self.kappa_ask - self.rebate - 
-                        (V[i, j - 1] - V[i, j])) if q_j > self.q_min else None
-                    
-                    # Compute the value for each possible action
-                    # (market buy, market sell, market make)
-                    V_mb = V[i - 1, j + 1] - self.cost if q_j < self.q_max else -np.inf
-                    V_ms = V[i - 1, j - 1] - self.cost if q_j > self.q_min else -np.inf
-                    V_mm = V[i, j] + dt * (
-                        (self.lambda_bid * np.exp(-self.kappa_bid * B) * 
-                        (B + self.rebate + V[i, j + 1] - V[i, j]) if B else 0) + 
-                        (self.lambda_ask * np.exp(-self.kappa_ask * A) * 
-                        (A + self.rebate + V[i, j - 1] - V[i, j]) if A else 0) - 
-                        self.phi * q_j ** 2
-                    )
 
-                    # Find the optimal action
-                    k = np.argmax([V_mb, V_ms, V_mm])
-
-                    # Update the value function and policy
-                    if k == 0:
-                        V_prime[j] = V_mb
-                        PI[(i - 1, j)] = ("market_buy", None, None)
-                    elif k == 1:
-                        V_prime[j] = V_ms
-                        PI[(i - 1, j)] = ("market_sell", None, None)
-                    else:
-                        V_prime[j] = V_mm
-                        PI[(i - 1, j)] = ("market_make", B, A)
-
-                # Compute the error and update the value function
-                error = np.linalg.norm(V_prime - V[i - 1])
-                V[i - 1] = V_prime
-                    
         # Store the value function and policy
-        self.V = ValueFunction(t_grid, q_grid, V, PI)
+        self.V = ValueFunction(t_grid, q_grid, V, U)
 
         print("HJB-QVI Solved!")
                     
