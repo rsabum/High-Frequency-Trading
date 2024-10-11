@@ -143,7 +143,7 @@ class MarketMaker(object):
 
         self.V = None
 
-    def solve_hjb_qvi(self):
+    def optimize(self):
         """
         Solves the optimal value function and policy 
         function by solving the HJB-QVI.
