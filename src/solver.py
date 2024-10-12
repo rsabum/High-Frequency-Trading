@@ -2,8 +2,9 @@ import numpy as np
 from tqdm import tqdm
 from .simulation import MarketState
 
+
 class ValueFunction(object):
-    def __init__(self, t_grid, q_grid, V, U):
+    def __init__(self, t_grid, q_grid, V):
         """
         Initializes the SolverOutput class with the specified parameters.
 
@@ -28,73 +29,64 @@ class ValueFunction(object):
         self.q_lookup = {q: i for i, q in enumerate(q_grid)}
 
         self.V = V
-        self.U = U
     
-    def get_value(self, t, q):
-        """
-        Returns the policy at the specified time and inventory level.
+    def __call__(self, state: MarketState) -> float:
+        t = state.timestamp
+        q = state.inventory
 
-        Parameters:
-        -----------
-        t : float
-            The time at which to evaluate.
-        q : float
-            The inventory level at which to evaluate.
-
-        Returns:
-        --------
-        float
-            The optimal value at the specified time and inventory level.
-        """
-
-        # Find the closest time step to the specified time
         t_idx = self.t_lookup[t]
         q_idx = self.q_lookup[q]
 
         return self.V[t_idx, q_idx]
-    
-    def get_policy(self, t, q):
+
+
+class Policy(object):
+    def __init__(self, t_grid, q_grid, U):
         """
-        Returns the policy at the specified time and inventory level.
+        Initializes the SolverOutput class with the specified parameters.
 
         Parameters:
         -----------
-        t : float
-            The time at which to evaluate the policy.
-        q : float
-            The inventory level at which to evaluate the policy.
-
-        Returns:
-        --------
-        tuple
-            The policy at the specified time and inventory level.
+        q_grid : list
+            A list representing the q grid.
+        t_grid : list
+            A list representing the t grid.
+        V : np.ndarray
+            A numpy array representing the optimal 
+            value function at each q and t value.
+        U : dict
+            A dictionary representing the optimal policy 
+            at each q and t value.
         """
 
-        # Find the closest time step to the specified time
+        self.q_grid = q_grid
+        self.t_grid = t_grid
+
+        self.t_lookup = {t: i for i, t in enumerate(t_grid)}
+        self.q_lookup = {q: i for i, q in enumerate(q_grid)}
+
+        self.U = U
+    
+    def __call__(self, state: MarketState) -> tuple:
+        t = state.timestamp
+        q = state.inventory
+
         t_idx = self.t_lookup[t]
         q_idx = self.q_lookup[q]
 
-        return self.U[(t_idx, q_idx)]
+        return self.U[t_idx, q_idx]
 
 
-class MarketMaker(object):
-    def __init__(
-        self, 
-        T, 
-        N, 
-        q_min, 
-        q_max,
-        lambda_bid, 
-        lambda_ask, 
-        kappa_bid, 
-        kappa_ask, 
-        rebate,
-        cost,
-        phi, 
-        alpha
+class HJB_QVI_Solver(object):
+    
+    @staticmethod
+    def solve(
+        T, N, q_min, q_max,lambda_bid, lambda_ask, 
+        kappa_bid, kappa_ask, rebate,cost,phi, alpha
     ):
         """
-        Initializes the MarketMaker class with the specified parameters.
+        Solves the optimal value function and policy 
+        function by solving the HJB-QVI.
 
         Parameters:
         -----------
@@ -125,58 +117,32 @@ class MarketMaker(object):
 
         Returns:
         --------
-        None
-        """    
-        
-        self.T = T
-        self.N = N
-        self.q_min = q_min
-        self.q_max = q_max
-        self.lambda_bid = lambda_bid
-        self.lambda_ask = lambda_ask
-        self.kappa_bid = kappa_bid
-        self.kappa_ask = kappa_ask
-        self.rebate = rebate
-        self.cost = cost
-        self.phi = phi
-        self.alpha = alpha
-
-        self.V = None
-
-    def optimize(self):
-        """
-        Solves the optimal value function and policy 
-        function by solving the HJB-QVI.
-
-        Parameters:
-        -----------
-        None
-
-        Returns:
-        --------
-        None
+        V : ValueFunction
+            The optimal value function.
+        U : Policy
+            The optimal policy.
         """         
 
         # Compute the time step size
-        dt = self.T / self.N
+        dt = T / N
 
         # Initialize time and inventory grids
-        t_grid = np.linspace(0, self.T, self.N + 1)
-        q_grid = np.arange(self.q_min, self.q_max + 1)
+        t_grid = np.linspace(0, T, N + 1)
+        q_grid = np.arange(q_min, q_max + 1)
 
         # Initialize the value function and policy
         V = np.zeros((len(t_grid), len(q_grid)))
         U = {}
 
         # Set the terminal condition: V(T, q) = -alpha * q^2
-        V[-1, :] = -self.alpha * q_grid ** 2
+        V[-1, :] = -alpha * q_grid ** 2
 
         # Solve the control problem by using 
         # a backwards euler finite difference scheme to
         # solve the HJB equation and value iteration to solve the QVI
 
         # Iterate backwards in time
-        for i in tqdm(range(self.N, 0, -1), desc="Solving HJB-QVI"):
+        for i in tqdm(range(N, 0, -1), desc="Solving HJB-QVI"):
             # initialize error to some large value
             error = 1e9
 
@@ -188,23 +154,23 @@ class MarketMaker(object):
                 for j, q_j in enumerate(q_grid):
                     # Compute the analytically optimal bid and ask depths
                     B = max(
-                        0, 1/self.kappa_bid - self.rebate - 
-                        (V[i, j + 1] - V[i, j])) if q_j < self.q_max else None
+                        0, 1/kappa_bid - rebate - 
+                        (V[i, j + 1] - V[i, j])) if q_j < q_max else None
                     
                     A = max(
-                        0, 1/self.kappa_ask - self.rebate - 
-                        (V[i, j - 1] - V[i, j])) if q_j > self.q_min else None
+                        0, 1/kappa_ask - rebate - 
+                        (V[i, j - 1] - V[i, j])) if q_j > q_min else None
                     
                     # Compute the value for each possible action
                     # (market buy, market sell, market make)
-                    V_mb = V[i - 1, j + 1] - self.cost if q_j < self.q_max else -np.inf
-                    V_ms = V[i - 1, j - 1] - self.cost if q_j > self.q_min else -np.inf
+                    V_mb = V[i - 1, j + 1] - cost if q_j < q_max else -np.inf
+                    V_ms = V[i - 1, j - 1] - cost if q_j > q_min else -np.inf
                     V_mm = V[i, j] + dt * (
-                        (self.lambda_bid * np.exp(-self.kappa_bid * B) * 
-                        (B + self.rebate + V[i, j + 1] - V[i, j]) if B else 0) + 
-                        (self.lambda_ask * np.exp(-self.kappa_ask * A) * 
-                        (A + self.rebate + V[i, j - 1] - V[i, j]) if A else 0) - 
-                        self.phi * q_j ** 2
+                        (lambda_bid * np.exp(-kappa_bid * B) * 
+                        (B + rebate + V[i, j + 1] - V[i, j]) if B else 0) + 
+                        (lambda_ask * np.exp(-kappa_ask * A) * 
+                        (A + rebate + V[i, j - 1] - V[i, j]) if A else 0) - 
+                        phi * q_j ** 2
                     )
 
                     # Find the optimal action
@@ -226,8 +192,8 @@ class MarketMaker(object):
                 V[i - 1] = V_prime
                     
         # Store the value function and policy
-        self.V = ValueFunction(t_grid, q_grid, V, U)
-                    
-    
-    def run(self, state: MarketState) -> tuple:
-        return self.V.get_policy(state.timestamp, state.position)
+        V = ValueFunction(t_grid, q_grid, V)
+        U = Policy(t_grid, q_grid, U)
+
+        return V, U
+        

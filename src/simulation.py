@@ -5,13 +5,13 @@ class MarketState(object):
     def __init__(
         self,
         timestamp: float,
-        position: int,
+        inventory: int,
         cash: float,
         mid_price: float
     ):
 
         self.timestamp = timestamp
-        self.position = position
+        self.inventory = inventory
         self.cash = cash
         self.mid_price = mid_price
 
@@ -138,14 +138,11 @@ class MarketSimulation():
         None
         """
         
-        # Generate Brownian motion increments
+        # Generate Weiner Process increment
         dW = np.random.normal(scale=np.sqrt(self.dt))
 
         # Simulate the asset price process
-        self.S_t = self.S_t * np.exp(
-            (self.mu - 0.5 * self.sigma ** 2) * self.dt + 
-            self.sigma * dW
-        )
+        self.S_t = self.S_t + self.mu * self.dt + self.sigma * dW
         
         # Round midprice to nearest tick
         self.S_t = self.round_to_tick(self.S_t)
@@ -167,7 +164,7 @@ class MarketSimulation():
 
         return MarketState(
             timestamp=self.t_grid[self.t_i],
-            position=self.Q_t,
+            inventory=self.Q_t,
             cash=self.X_t,
             mid_price=self.S_t
         )
